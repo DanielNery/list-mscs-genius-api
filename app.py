@@ -6,12 +6,13 @@ from resources.musics import Musics
 
 import redis
 import dotenv
+import os
 dotenv.load_dotenv()
 
 app = Flask(__name__)
 api = Api(app)
 
-CORS(app, origins="*", allow_headers=[
+CORS(app, origins=os.getenv("ALLOWED_HOSTS"), allow_headers=[
     "Content-Type", "Authorization", "Access-Control-Allow-Credentials"],
     supports_credentials=True)
 

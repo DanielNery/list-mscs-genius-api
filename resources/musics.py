@@ -7,6 +7,7 @@ import json
 import os
 import redis
 import logging
+import boto3
 
 _logger = logging.getLogger(__name__)
 
@@ -17,7 +18,10 @@ HEADER = {
 	'Authorization': f'Bearer {os.getenv("ACESS_TOKEN")}'
 }
 
-redis_conn = redis.Redis()
+redis_conn = redis.Redis(os.getenv("REDIS_HOST"))
+client = boto3.client('dynamodb')
+db = boto3.resource('dynamodb')
+
 
 class Musics(Resource):
 	"""Recurso responsável por retornar 10 músicas mais populares do artista passado"""
@@ -52,6 +56,24 @@ class Musics(Resource):
 			_logger.error(f"An error occurred while updating the cache.\n{e}")
 			return False
 
+	def _update_dynamodb(self, artist_name, data):
+		"""Atualiza dynamodb"""
+
+		try:
+			table = db.Table('listmsc')
+			response = table.put_item(
+				Item={
+					'transaction': str(uuid.uuid4()),
+					'artist_name': artist_name,
+					**data
+				}
+			)
+			return response
+
+		except Exception as e:
+			_logger.error(f"An error occurred while updating the dynamodb.\n{e}")
+			return False
+
 	def get(self, artist_id, artist_name):
 		"""
 			Retorna lista de artistas
@@ -59,8 +81,10 @@ class Musics(Resource):
 
 		cache = self._get_cache_args()
 		cache_data = self._search_artist(artist_name) if cache else False
+		
 		if not cache_data:
 			_logger.warning("No Cached.")
+
 			querystring = {"q": artist_id}
 			url = f"https://{os.getenv('HOST')}/artists/{artist_id}/songs?sort=popularity&per_page=10"
 			response = requests.get(url=url, headers=HEADER, params=querystring)
@@ -68,13 +92,16 @@ class Musics(Resource):
 			
 			if response.status_code == 200:
 				
-				for song in data['response']['songs']:
-					if song['primary_artist']['name'] == artist_name:
-						self._update_cache(artist_name, response.text)
-						break
+				self._update_cache(artist_name, response.text)
+				response = self._update_dynamodb(artist_name, data)
+				
+				if response and response.get('ResponseMetadata')['HTTPStatusCode'] == 200:
+					return data, 200
+				elif response and response.get('ResponseMetadata')['HTTPStatusCode'] != 200:
+					return response, response.get('ResponseMetadata')['HTTPStatusCode']
 
-				#self._update_dynamodb(self, data)
-				return data, 200
+				return {'message': 'Internal Server Error.'}, 500
+
 			return data, response.status_code
 
 		_logger.warning("Returning Cached data.")
