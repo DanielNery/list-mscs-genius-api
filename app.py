@@ -19,5 +19,9 @@ CORS(app, origins=os.getenv("ALLOWED_HOSTS"), allow_headers=[
 api.add_resource(Search, '/search/<string:artist_name>')
 api.add_resource(Musics, '/artist/<string:artist_id>/<string:artist_name>')
 
+@app.route('/')
+def index():
+    return "Bem-Vindo(a) a API!!"
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()
